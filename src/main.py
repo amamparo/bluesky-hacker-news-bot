@@ -24,7 +24,7 @@ def main():
     bsky = Client()
     bsky.login(Env.bsky_handle, Env.bsky_password)
 
-    latest_bsky_posts = bsky.get_author_feed(actor="hacker-news.bsky.social", limit=n * 2)['feed']
+    latest_bsky_posts = bsky.get_author_feed(actor=Env.bsky_handle, limit=n * 2)['feed']
     for hn_post in __get_hacker_news_posts(n):
         if any(hn_post.url == post.post.embed.external.uri for post in latest_bsky_posts):
             continue
