@@ -61,8 +61,8 @@ def main():
         discussion = '[Discussion]'
         text = f"{re.sub(r'[\u2010-\u2015\u2212]', '-', hn_post.title)} {discussion}"
 
-        start = len(text) - len(discussion)
         end = len(text)
+        start = end - len(discussion)
 
         bsky.send_post(
             text=text,
