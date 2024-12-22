@@ -59,7 +59,8 @@ def main():
         thumb_blob = bsky.upload_blob(thumb).blob if thumb else None
 
         discussion = '[Discussion]'
-        text = f"{re.sub(r'[\u2010-\u2015\u2212]', '-', hn_post.title)} {discussion}"
+        title = re.sub(r'[\u2010-\u2015\u2212]', '-', hn_post.title)
+        text = f"{title} {discussion}"
 
         end = len(text)
         start = end - len(discussion)
