@@ -1,18 +1,25 @@
 import math
+import re
 import time
 from dataclasses import dataclass
 from email.utils import parsedate
 from typing import List, Optional
-from urllib.parse import urljoin
 
-import requests
 from atproto_client import Client
 from atproto_client.models.app.bsky.embed.external import Main as Embed, External
 from atproto_client.models.app.bsky.richtext.facet import Link, Main as Facet
+from fake_useragent import UserAgent
 from rss_parser import RSSParser
+from tqdm import tqdm
+
+import requests
+from bs4 import BeautifulSoup
+from PIL import Image
+from io import BytesIO
 
 from src.env import Env
 
+user_agent = UserAgent().random
 
 @dataclass
 class HackerNewsPost:
@@ -44,7 +51,7 @@ def main():
     latest_bsky_posts = bsky.get_author_feed(actor=Env.bsky_handle, limit=100)['feed']
     already_posted_urls = [post.post.embed.external.uri for post in latest_bsky_posts]
 
-    for hn_post in __get_hacker_news_posts(10):
+    for hn_post in tqdm(__get_hacker_news_posts(5)):
         if hn_post.url in already_posted_urls:
             continue
 
@@ -52,10 +59,10 @@ def main():
         thumb_blob = bsky.upload_blob(thumb).blob if thumb else None
 
         discussion = '[Discussion]'
-        text = f"{hn_post.title} {discussion}"
+        text = f"{re.sub(r'[\u2010-\u2015\u2212]', '-', hn_post.title)} {discussion}"
 
-        start = len(hn_post.title) + 1
-        end = start + len(discussion)
+        start = len(text) - len(discussion)
+        end = len(text)
 
         bsky.send_post(
             text=text,
@@ -82,13 +89,39 @@ def main():
 
 
 def __get_thumbnail(url: str) -> Optional[bytes]:
-    r = requests.get(url, verify=False)
-    if r.ok:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(r.text, 'html.parser')
-        og_image_tag = soup.find('meta', property='og:image')
-        if og_image_tag:
-            return requests.get(urljoin(url, og_image_tag['content']), verify=False).content
+    page = requests.get(url, verify=False, headers={
+        'User-Agent': user_agent
+    })
+    soup = BeautifulSoup(page.text, 'html.parser')
+    meta = soup.find("meta", property="og:image")
+    if not meta:
+        return None
+
+    img_url = meta["content"]
+    r = requests.get(img_url, verify=False, headers={
+        'User-Agent': user_agent
+    })
+    if r.status_code != 200:
+        return None
+
+    data = r.content
+    if len(data) <= 1_000_000:
+        return data
+
+    img = Image.open(BytesIO(data)).convert("RGB")
+    width, height = img.size
+    scale = 0.9
+    while True:
+        buf = BytesIO()
+        img.save(buf, format="JPEG", optimize=False)
+        buf_value = buf.getvalue()
+        if len(buf_value) <= 1_000_000:
+            return buf_value
+        width = int(width * scale)
+        height = int(height * scale)
+        if width < 10 or height < 10:
+            return buf_value
+        img = img.resize((width, height))
 
 
 def __get_hacker_news_posts(n: int) -> List[HackerNewsPost]:
